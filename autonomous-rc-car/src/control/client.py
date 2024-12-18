@@ -17,4 +17,4 @@ class RCClient:
 if __name__ == "__main__":
     client = RCClient(host="192.168.171.104", port=4000)  # IP und Port des Raspberry Pi
     client.send_command("servo:90")  # Beispielbefehl
-    client.send_command("throttle:0.2")
+    client.send_command("throttle:0.1")

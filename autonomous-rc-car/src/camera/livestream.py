@@ -24,5 +24,5 @@ def receive_stream(gstreamer_url):
 
 if __name__ == "__main__":
     # GStreamer URL für den Stream (ersetze <IP-ADRESSE> durch die IP des Raspberry Pi)
-    gstreamer_url = "udp://<IP-ADRESSE>:5000"
+    gstreamer_url = "udp://192.168.171.104:5000"
     receive_stream(gstreamer_url)
