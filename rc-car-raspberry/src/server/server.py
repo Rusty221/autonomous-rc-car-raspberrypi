@@ -16,8 +16,6 @@ class RCServer:
         self.server_socket.listen(5)
         print(f"Server läuft auf {self.host}:{self.port}")
 
-        signal.signal(signal.SIGINT, self.shutdown)
-
         while True:
             conn, addr = self.server_socket.accept()
             print(f"Verbunden mit {addr}")
