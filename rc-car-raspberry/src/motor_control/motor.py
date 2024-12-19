@@ -2,7 +2,7 @@ from adafruit_servokit import ServoKit
 
 class MotorControl:
     def __init__(self):
-        self.kit = ServoKit(channels=16)
+        self.kit = ServoKit(channels=16, frequency=50)
 
     def set_servo_angle(self, channel, angle):
         print(f"Setze Servo {channel} auf Winkel {angle}")

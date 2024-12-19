@@ -1,12 +1,16 @@
 import cv2
 
 def receive_stream(gstreamer_url):
-    cap = cv2.VideoCapture(gstreamer_url)
+    print(f"Versuche, den Stream von {gstreamer_url} zu öffnen...")
+    # Öffne den GStreamer-Stream
+    cap = cv2.VideoCapture(gstreamer_url, cv2.CAP_GSTREAMER)
 
     if not cap.isOpened():
         print("Fehler: Livestream konnte nicht geöffnet werden.")
         return
-
+    else:
+        print("Livestream wird angezeigt. Drücke 'q', um zu beenden.")
+        
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -24,5 +28,12 @@ def receive_stream(gstreamer_url):
 
 if __name__ == "__main__":
     # GStreamer URL für den Stream (ersetze <IP-ADRESSE> durch die IP des Raspberry Pi)
-    gstreamer_url = "udp://192.168.171.104:5000"
+    gstreamer_url = (
+        "udpsrc port=5000 ! "
+        "application/x-rtp, encoding-name=JPEG ! "
+        "rtpjpegdepay ! "
+        "jpegdec ! "
+        "videoconvert ! "
+        "appsink"
+    )
     receive_stream(gstreamer_url)
