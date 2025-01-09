@@ -55,6 +55,13 @@ def start_camera_stream_http():
         f"multipartmux ! "
         f"tcpserversink host={laptop_ip} port={port}"
     )
+    
+def start_camera_stream_motion():
+
+    cmd = "sudo systemctl start motion"
+    print("Starte Motion Kamera-Stream...")
+    os.system(cmd)
+
 
     print("Starte HTTP/MJPEG Kamera-Stream...")
     os.system(http_command)
@@ -64,4 +71,5 @@ if __name__ == "__main__":
     # start_camera_stream_gstreamer()
     # start_camera_stream_ffmpeg()
     # start_camera_stream_rtsp()
-    start_camera_stream_http()
+    # start_camera_stream_http()
+    start_camera_stream_motion()
