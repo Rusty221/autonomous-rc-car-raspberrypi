@@ -25,5 +25,5 @@ def receive_stream(motion_url):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    motion_url = "http://<IP-ADRESSE>:<PORT>/"
+    motion_url = f"http://{PI_HOST}:{PI_STREAM_PORT}/"
     receive_stream(motion_url)
