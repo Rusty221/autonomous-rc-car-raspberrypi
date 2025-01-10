@@ -2,7 +2,7 @@ import threading
 import signal
 import sys
 from src.server.server import RCServer
-from src.sensors.camera import start_camera_stream
+from src.sensors.camera import start_camera_stream_motion
 
 def shutdown_server(signum, frame):
     print("Server wird heruntergefahren...")
@@ -19,4 +19,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, shutdown_server)
 
     # Kamera-Stream starten
-    start_camera_stream()
+    start_camera_stream_motion()
+
+    # Warten, bis der Server-Thread beendet ist
+    server_thread.join()

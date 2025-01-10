@@ -1,4 +1,5 @@
 import socket
+import os
 
 class RCClient:
     def __init__(self, host, port):
@@ -14,7 +15,17 @@ class RCClient:
         except ConnectionError as e:
             print(f"Fehler beim Verbinden: {e}")
 
+    def send_servo_command(self, angle):
+        command = f"servo:{angle}"
+        self.send_command(command)
+
+    def send_throttle_command(self, throttle):
+        command = f"throttle:{throttle}"
+        self.send_command(command)
+
 if __name__ == "__main__":
     client = RCClient(host="192.168.171.104", port=4000)  # IP und Port des Raspberry Pi
-    client.send_command("servo:90")  # Beispielbefehl
-    client.send_command("throttle:0.1")
+    
+    # Beispielbefehle senden
+    client.send_servo_command(90)
+    client.send_throttle_command(0.1)

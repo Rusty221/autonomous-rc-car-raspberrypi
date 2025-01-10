@@ -43,4 +43,5 @@ class RCServer:
 
 if __name__ == "__main__":
     server = RCServer(host="0.0.0.0", port=4000)
+    signal.signal(signal.SIGINT, server.shutdown)
     server.start()
