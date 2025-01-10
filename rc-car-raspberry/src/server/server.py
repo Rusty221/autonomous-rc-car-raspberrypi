@@ -1,5 +1,4 @@
 import socket
-import signal
 import sys
 from src.motor_control.motor import MotorControl
 
