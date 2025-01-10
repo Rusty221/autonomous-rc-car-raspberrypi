@@ -3,12 +3,13 @@
 # Linux: sudo apt-get install sshpass
 
 import os
+import src.utils.config as config
 
 class PingAndExecute:
-    def __init__(self, pi_host, user, password, script_path, venv_path):
-        self.pi_host = pi_host
-        self.user = user
-        self.password = password
+    def __init__(self, script_path, venv_path):
+        self.pi_host = config.PI_HOST
+        self.user = config.PI_USER
+        self.password = config.PI_PASSWORD
         self.script_path = script_path
         self.venv_path = venv_path
 
@@ -35,9 +36,6 @@ class PingAndExecute:
 
 if __name__ == "__main__":
     executor = PingAndExecute(
-        pi_host="192.168.171.104",
-        user="Betsy",
-        password="Betsy123456",
         script_path="autonomous-rc-car-raspberrypi/rc-car-raspberry/run.py",
         venv_path="autonomous-rc-car-raspberrypi/rc-car-raspberry/pi_env"
     )
