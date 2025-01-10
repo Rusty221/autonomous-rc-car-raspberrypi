@@ -20,3 +20,6 @@ if __name__ == "__main__":
 
     # Kamera-Stream starten
     start_camera_stream_motion()
+
+    # Warten, bis der Server-Thread beendet ist
+    server_thread.join()
