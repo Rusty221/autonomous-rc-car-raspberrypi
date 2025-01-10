@@ -1,4 +1,6 @@
 # IP-Adresse und Ports des Raspberry Pi
 PI_HOST = "192.168.171.104"
 PI_CONTROL_PORT = 4000
+STREAM_URL = "http://192.168.171.104:8081"
 PI_STREAM_PORT = 8081
+

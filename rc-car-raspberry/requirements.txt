@@ -1,4 +1,4 @@
 adafruit-circuitpython-servokit
-picamera
 flask
-opencv-python
+socket
+signal
