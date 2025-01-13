@@ -1,4 +1,5 @@
 import cv2
+import src.utils.config as config   
 
 def receive_stream(motion_url):
     print(f"Versuche, den Stream von {motion_url} zu öffnen...")
@@ -25,5 +26,5 @@ def receive_stream(motion_url):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    motion_url = f"http://{PI_HOST}:{PI_STREAM_PORT}/"
+    motion_url = f"http://{config.PI_HOST}:{config.PI_STREAM_PORT}/"
     receive_stream(motion_url)

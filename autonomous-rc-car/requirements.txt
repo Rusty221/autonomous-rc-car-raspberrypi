@@ -4,3 +4,4 @@ requests
 tensorflow
 # Füge GStreamer-Pakete hinzu
 opencv-python-headless
+sshpass
