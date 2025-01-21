@@ -6,7 +6,7 @@ import numpy as np
 from src.control.client import RCClient
 import src.utils.config as config
 
-def steering_logic():
+def motor_test():
     """
     Hier kannst du deine Befehle an den RCClient schicken,
     während im Hauptthread das Video gezeigt wird.
@@ -26,7 +26,10 @@ def steering_logic():
 
 def find_two_largest_contours(mask):
     """ Hilfsfunktion, um die zwei größten Konturen zurückzugeben. """
+    
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+            
     if len(contours) < 2:
         # Falls weniger als zwei Konturen vorhanden sind, einfach alle zurückgeben
         contours_sorted = sorted(contours, key=cv2.contourArea, reverse=True)
@@ -34,34 +37,45 @@ def find_two_largest_contours(mask):
     else:
         # Sortiere nach Fläche (absteigend) und nimm die zwei größten
         contours_sorted = sorted(contours, key=cv2.contourArea, reverse=True)
+        
         return contours_sorted[:2]
 
-def detect_orange_lines(frame):
+def detect_lines(frame):
     """
     Versucht zwei orange Linien zu erkennen.
     Gibt die X-Koordinaten der Mittelpunkte dieser Linien zurück.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # Orange Farbfilter
-    lower_orange = (5, 100, 80)
-    upper_orange = (25, 255, 255)
+    # Schwellwert für minimale Konturgröße in Pixeln
+    contour_threshold = 50 
+    
+    # Orangebereich
+    lower_orange = (0, 70, 80)
+    upper_orange = (40, 255, 255)
+    
+    # Weißbereich
+    lower_white = (0, 0, 220)      
+    upper_white = (255, 50, 255)  
 
     # Maske erzeugen
-    mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
+    mask_white  = cv2.inRange(hsv, lower_white,  upper_white)
+
+    mask_combined = cv2.bitwise_or(mask_orange, mask_white)
 
     # Erosion, Dilation zur Rauschunterdrückung
     kernel = np.ones((5, 5), np.uint8)
-    mask = cv2.erode(mask, kernel, iterations=1)
-    mask = cv2.dilate(mask, kernel, iterations=1)
+    #mask_combined = cv2.erode(mask_combined, kernel, iterations=1)
+    mask_combined = cv2.dilate(mask_combined, kernel, iterations=3)
 
     # Zwei größte Konturen suchen
-    contours = find_two_largest_contours(mask)
+    contours = find_two_largest_contours(mask_combined)
     cx_list = []
 
     for c in contours:
         area = cv2.contourArea(c)
-        if area > 50:  # Schwellwert für minimale Konturgröße
+        if area > contour_threshold:  
             M = cv2.moments(c)
             if M["m00"] != 0:
                 cx = int(M["m10"] / M["m00"])
@@ -70,7 +84,7 @@ def detect_orange_lines(frame):
                 # Zur Visualisierung: Mittelpunkt zeichnen
                 cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
 
-    return cx_list, mask
+    return cx_list, mask_combined
 
 
 def main():
@@ -100,7 +114,7 @@ def main():
             frame_blur = cv2.GaussianBlur(frame, (5, 5), 0)
             
             # Orange Konturen suchen
-            cx_list, mask = detect_orange_lines(frame_blur)
+            cx_list, mask = detect_lines(frame_blur)
             
 
             # Wenn wir mindestens zwei Linien haben
@@ -130,17 +144,18 @@ def main():
                 client.send_command(f"servo:{new_servo}")
                 
                 # Gas geben
-                client.send_throttle_command(0.15)
+                #client.send_throttle_command(0.15)
+            
 
             else:
                 # Wir haben keine oder nur 1 Kontur gefunden
                 client.send_throttle_command(0.0)
-                print("Weniger als 2 Linien erkannt, Anhalten!")
+                print("Keine Linien erkannt. Anhalten!")
 
             # Anzeigen
             #cv2.imshow("RC Car Livestream", frame)
             cv2.imshow("blurred frame", frame_blur)
-            cv2.imshow("Orange Mask Blur", mask)
+            cv2.imshow("Mask with Blur", mask)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
