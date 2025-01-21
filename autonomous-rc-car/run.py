@@ -147,6 +147,35 @@ def main():
                 #client.send_throttle_command(0.15)
             
 
+            elif len(cx_list) == 1:
+                # Nur eine Linie gefunden
+                aspired_offset = 200
+                
+                single_x = cx_list[0]
+
+                width = frame.shape[1]
+                center = width // 2
+
+                if single_x < center:
+                    # linie links
+                    desired_x = center - aspired_offset
+                else:
+                    # linie rechts 
+                    desired_x = center + aspired_offset
+
+                offset = single_x - desired_x
+
+                base_servo = 90
+                gain = 0.05
+                new_servo = int(base_servo + gain * offset)
+                new_servo = max(60, min(120, new_servo))
+
+                client.send_command(f"servo:{new_servo}")
+
+                # langsamer werden
+                #client.send_throttle_command(0.1)
+                print("Nur eine Linie gefunden. Lenke nach.")
+
             else:
                 # Wir haben keine oder nur 1 Kontur gefunden
                 client.send_throttle_command(0.0)
