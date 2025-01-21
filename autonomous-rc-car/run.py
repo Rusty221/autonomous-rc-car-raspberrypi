@@ -44,7 +44,7 @@ def detect_orange_lines(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     # Orange Farbfilter
-    lower_orange = (5, 100, 100)
+    lower_orange = (5, 100, 80)
     upper_orange = (25, 255, 255)
 
     # Maske erzeugen
@@ -97,8 +97,11 @@ def main():
                 print("Fehler beim Lesen des Streams.")
                 break
             
+            frame_blur = cv2.GaussianBlur(frame, (5, 5), 0)
+            
             # Orange Konturen suchen
-            cx_list, mask = detect_orange_lines(frame)
+            cx_list, mask = detect_orange_lines(frame_blur)
+            
 
             # Wenn wir mindestens zwei Linien haben
             if len(cx_list) >= 2:
@@ -135,8 +138,9 @@ def main():
                 print("Weniger als 2 Linien erkannt, Anhalten!")
 
             # Anzeigen
-            cv2.imshow("RC Car Livestream", frame)
-            cv2.imshow("Orange Mask", mask)
+            #cv2.imshow("RC Car Livestream", frame)
+            cv2.imshow("blurred frame", frame_blur)
+            cv2.imshow("Orange Mask Blur", mask)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
