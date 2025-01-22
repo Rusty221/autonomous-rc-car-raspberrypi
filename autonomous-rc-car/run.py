@@ -45,33 +45,33 @@ def detect_lines(frame):
     Versucht zwei orange Linien zu erkennen.
     Gibt die X-Koordinaten der Mittelpunkte dieser Linien zurück.
     """
+    
+    lower_orange = (0, 10, 220) # Helligkeit, Sättigung, Farbton
+    upper_orange = (40, 55, 255)
+    
+    lower_white = (0, 0, 220)      # Helligkeit, Sättigung, Farbton
+    upper_white = (255, 50, 255) 
+    
+    contour_threshold = 2500 # Mindestgröße einer Kontur in Pixeln
+    
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # Schwellwert für minimale Konturgröße in Pixeln
-    contour_threshold = 50 
-    
-    # Orangebereich
-    lower_orange = (0, 70, 80)
-    upper_orange = (40, 255, 255)
-    
-    # Weißbereich
-    lower_white = (0, 0, 220)      
-    upper_white = (255, 50, 255)  
 
     # Maske erzeugen
     mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
     mask_white  = cv2.inRange(hsv, lower_white,  upper_white)
 
-    mask_combined = cv2.bitwise_or(mask_orange, mask_white)
+    #mask_combined = cv2.bitwise_or(mask_orange, mask_white)
+    mask_combined = mask_orange
 
     # Erosion, Dilation zur Rauschunterdrückung
     kernel = np.ones((5, 5), np.uint8)
     #mask_combined = cv2.erode(mask_combined, kernel, iterations=1)
-    mask_combined = cv2.dilate(mask_combined, kernel, iterations=3)
+    mask_combined = cv2.dilate(mask_combined, kernel, iterations=4)
 
     # Zwei größte Konturen suchen
     contours = find_two_largest_contours(mask_combined)
     cx_list = []
+    
 
     for c in contours:
         area = cv2.contourArea(c)
@@ -88,12 +88,12 @@ def detect_lines(frame):
 
 
 def main():
-    # 1) Starte Neben-Thread für die Steuer-Logik
-    #control_thread = threading.Thread(target=steering_logic)
+    # 1) Steuer-Thread starten
+    #control_thread = threading.Thread(target=motor_test)
     #control_thread.start()
     client = RCClient(host=config.PI_HOST, port=config.PI_CONTROL_PORT)
 
-    # 2) Hier im Haupt-Thread den Stream anzeigen
+    # 2) Haupt-Thread: Livestream anzeigen
     motion_url = f"http://{config.PI_HOST}:{config.PI_STREAM_PORT}/"
     cap = cv2.VideoCapture(motion_url)
 
@@ -136,15 +136,16 @@ def main():
 
                 # Lenkwinkel ableiten:
                 base_servo = 90
-                gain = 0.05  # An wie vielen "Pixel pro Grad" du anpasst
-                new_servo = int(base_servo + gain * offset)
-                new_servo = max(60, min(120, new_servo))  # Begrenze auf [60..120]
+                gain = 0.1  
+                new_servo = int(base_servo - gain * offset)
+                new_servo = max(60, min(120, new_servo))  
 
                 # Kommandos ans Auto
                 client.send_command(f"servo:{new_servo}")
+                print(f"Servo: {new_servo}")
                 
                 # Gas geben
-                #client.send_throttle_command(0.15)
+                client.send_throttle_command(0.15)
             
 
             elif len(cx_list) == 1:
@@ -166,18 +167,18 @@ def main():
                 offset = single_x - desired_x
 
                 base_servo = 90
-                gain = 0.05
-                new_servo = int(base_servo + gain * offset)
+                gain = 0.15
+                new_servo = int(base_servo - gain * offset)
                 new_servo = max(60, min(120, new_servo))
 
                 client.send_command(f"servo:{new_servo}")
+                print(f"Servo: {new_servo}")
 
                 # langsamer werden
-                #client.send_throttle_command(0.1)
-                print("Nur eine Linie gefunden. Lenke nach.")
+                client.send_throttle_command(0.1)
+                #print("Nur eine Linie gefunden. Lenke nach.")
 
             else:
-                # Wir haben keine oder nur 1 Kontur gefunden
                 client.send_throttle_command(0.0)
                 print("Keine Linien erkannt. Anhalten!")
 
