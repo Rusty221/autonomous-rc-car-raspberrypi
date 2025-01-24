@@ -24,7 +24,7 @@ MORPH_DILATE_ITER = 4      # Anzahl Iterationen für Dilation
 
 # -- LENKUNG: ZWEI LINIEN --
 BASE_SERVO = 90
-GAIN_TWO_LINES = 0.11     # offset * GAIN => +/- servo
+GAIN_TWO_LINES = 0.10     # offset * GAIN => +/- servo
 MIN_SERVO = 60
 MAX_SERVO = 120
 
@@ -32,10 +32,19 @@ MAX_SERVO = 120
 GAIN_ONE_LINE = 0.10
 ASPIRED_OFFSET_SINGLE_LINE = 250  # z.B. 250px Abstand vom Bildzentrum
 
+# -- RATIO / HÖHE --
+RATIO_THRESHOLD = 1.25
+HEIGHT_THRESHOLD = 80
+
 # -- GESCHWINDIGKEIT / THROTTLE --
-THROTTLE_TWO_LINES = 0.14
-THROTTLE_ONE_LINE = 0.15
-THROTTLE_NO_LINES = 0.14
+BASE_THROTTLE_TWO_LINES = 0.14
+BASE_THROTTLE_ONE_LINE = 0.15
+BASE_THROTTLE_NO_LINES = 0.14
+MODIFIER_VERY_VERTICAL = 0.00
+MODIFIER_MORE_VERTICAL = 0.00
+MODIFIER_MORE_HORIZONTAL = 0.00
+MODIFIER_VERY_HORIZONTAL = 0.00
+
 
 ######################################
 # ENDE TUNING-PARAMETER
@@ -104,37 +113,46 @@ def find_two_largest_contours(mask):
         return contours_sorted[:2]
 
 def detect_lines(frame):
-    
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # Maske erzeugen
     mask = cv2.inRange(hsv, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
     mask_second = cv2.inRange(hsv, HSV_LOWER_ORANGE_HUE, HSV_LOWER_ORANGE_HUE)
-    
     mask = cv2.bitwise_or(mask, mask_second)
 
-    # Erosion, Dilation zur Rauschunterdrückung
-    kernel = np.ones((5, 5), np.uint8)
-    #mask = cv2.erode(mask_combined, kernel, iterations=1)
-    mask = cv2.dilate(mask, kernel, iterations=4)
+    kernel = np.ones((MORPH_KERNEL_SIZE, MORPH_KERNEL_SIZE), np.uint8)
+    mask = cv2.dilate(mask, kernel, iterations=MORPH_DILATE_ITER)
 
-    # Zwei größte Konturen suchen
     contours = find_two_largest_contours(mask)
-    cx_list = []
     
-
+    contour_info_list = []
+    
     for c in contours:
         area = cv2.contourArea(c)
-        if area > CONTOUR_THRESHOLD:  
+        if area > CONTOUR_THRESHOLD:
+            rect = cv2.minAreaRect(c)
+            (cx_rect, cy_rect), (w, h), angle = rect
+            
+            # Konturmomente, um cx/cy des Schwerpunktes zu bestimmen
             M = cv2.moments(c)
             if M["m00"] != 0:
                 cx = int(M["m10"] / M["m00"])
                 cy = int(M["m01"] / M["m00"])
-                cx_list.append(cx)
-                # Zur Visualisierung: Mittelpunkt zeichnen
+                
+                # ratio = Höhe/Breite (Vermeidung Division durch 0)
+                ratio = (h / (w + 1e-5)) if w > 0 else 0
+
+                # Visualisierung
                 cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
 
-    return cx_list, mask
+                contour_info_list.append({
+                    "cx": cx,   # Schwerpunkt x
+                    "ratio": ratio, # Höhe/Breite
+                    "h": h, # absolute Höhe
+                    "w": w,    # absolute Breite
+                    "area": area    # Fläche
+                })
+
+    return contour_info_list, mask
 
 
 def main():
@@ -160,52 +178,59 @@ def main():
             
             frame_blur = cv2.GaussianBlur(frame, (5, 5), 0)
             
-            #
-            dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
+            #dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
             
             # Orange Konturen suchen
-            cx_list, mask = detect_lines(frame_blur)
-            """
-            time.sleep(1)
-            client.send_command("servo:120")
-            time.sleep(1)
-            client.send_command("servo:60")
-            """
+            contour_info_list, mask = detect_lines(frame_blur)
+            
             # Wenn wir mindestens zwei Linien haben
-            if len(cx_list) >= 2:
+            if len(contour_info_list) >= 2:
                 
                 # Sortiere die Mittelpunkte
-                cx_list.sort()
-                left_x = cx_list[0]
-                right_x = cx_list[1]
+                sorted_contours = sorted(contour_info_list, key=lambda d: d["cx"])
+                left = sorted_contours[0]
+                right = sorted_contours[1]
 
-                # Mitte zwischen den beiden Linien
-                mid_x = (left_x + right_x) // 2
-
-                # Bildmitte
+                # Mittelpunkt
+                mid_x = (left["cx"] + right["cx"]) // 2
                 width = frame.shape[1]
                 center = width // 2
-
-                offset = mid_x - center  # negativ: Linie(n) liegt/liegen links, positiv: rechts
+                offset = mid_x - center
 
                 # Lenkwinkel ableiten:
-                base_servo = 90
-                gain = 0.1  
-                new_servo = int(base_servo - gain * offset)
+                new_servo = int(BASE_SERVO - GAIN_TWO_LINES * offset)
                 new_servo = max(60, min(120, new_servo))  
+
+                # Durchschnittliche Ratio/Height
+                avg_ratio = (left["ratio"] + right["ratio"]) / 2.0
+                avg_height = (left["h"] + right["h"]) / 2.0
 
                 # Kommandos ans Auto
                 client.send_command(f"servo:{new_servo}")
                 print(f"Servo: {new_servo}")
                 
-                # Gas geben
-                client.send_throttle_command(0.12)
+                if avg_ratio > RATIO_THRESHOLD and avg_height > HEIGHT_THRESHOLD:
+                    # sehr vertikal
+                    client.send_throttle_command(BASE_THROTTLE_TWO_LINES + MODIFIER_VERY_VERTICAL)
+                elif avg_ratio > RATIO_THRESHOLD:
+                    # vertikal
+                    client.send_throttle_command(BASE_THROTTLE_TWO_LINES + MODIFIER_MORE_VERTICAL)
+                elif avg_ratio < RATIO_THRESHOLD and avg_ratio > 1.0:
+                    #eher vertikal
+                    client.send_throttle_command(BASE_THROTTLE_TWO_LINES)
+                elif avg_ratio > 0.8:
+                    # eher horizontal
+                    client.send_throttle_command(BASE_THROTTLE_TWO_LINES - MODIFIER_MORE_HORIZONTAL)
+                else:
+                    # sehr horizontal
+                    client.send_throttle_command(BASE_THROTTLE_TWO_LINES - MODIFIER_VERY_HORIZONTAL)
+
             
 
-            elif len(cx_list) == 1:
-                # Nur eine Linie gefunden
-                single_x = cx_list[0]
-
+            elif len(contour_info_list) == 1:
+                # Nur eine Linie
+                single = contour_info_list[0]
+                single_x = single["cx"]
                 width = frame.shape[1]
                 center = width // 2
 
@@ -222,14 +247,30 @@ def main():
                 new_servo = max(60, min(120, new_servo))
 
                 client.send_command(f"servo:{new_servo}")
-                print(f"Servo: {new_servo}")
+                #print(f"Servo: {new_servo}")
+                
+                ratio = single["ratio"]
+                h = single["h"]
 
-                client.send_throttle_command(THROTTLE_ONE_LINE)
-                #print("Nur eine Linie gefunden. Lenke nach.")
+                if ratio > RATIO_THRESHOLD and h > HEIGHT_THRESHOLD:
+                    # sehr vertikal
+                    client.send_throttle_command(BASE_THROTTLE_ONE_LINE + MODIFIER_VERY_VERTICAL)
+                elif ratio > RATIO_THRESHOLD:
+                    # vertikal
+                    client.send_throttle_command(BASE_THROTTLE_ONE_LINE + MODIFIER_MORE_VERTICAL)
+                elif ratio < RATIO_THRESHOLD and ratio > 1.0:
+                    #eher vertikal
+                    client.send_throttle_command(BASE_THROTTLE_ONE_LINE)
+                elif ratio > 0.8:
+                    # eher horizontal
+                    client.send_throttle_command(BASE_THROTTLE_ONE_LINE - MODIFIER_MORE_HORIZONTAL)
+                else:
+                    # sehr horizontal
+                    client.send_throttle_command(BASE_THROTTLE_ONE_LINE - MODIFIER_VERY_HORIZONTAL)
 
             else:
-                client.send_throttle_command(THROTTLE_NO_LINES)
-                print("Keine Linien erkannt. Anhalten!")
+                client.send_throttle_command(BASE_THROTTLE_NO_LINES)
+                print("Keine Linien erkannt")
 
 
             #dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
