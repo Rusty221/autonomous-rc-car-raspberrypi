@@ -6,23 +6,86 @@ import numpy as np
 from src.control.client import RCClient
 import src.utils.config as config
 
-def motor_test():
+######################################
+# TUNING-PARAMETER
+######################################
+
+# -- HSV-GRENZEN FÜR ORANGE (OpenCV-Skala 0..180,0..255,0..255) --
+HSV_LOWER_ORANGE = (0, 0, 225)
+HSV_UPPER_ORANGE = (50, 62, 255)
+
+HSV_LOWER_ORANGE_HUE = (130, 0, 225)
+HSV_LOWER_ORANGE_HUE = (180, 62, 255)
+
+# -- KONTUREN --
+CONTOUR_THRESHOLD = 2500  # Mindestfläche in Pixel²
+MORPH_KERNEL_SIZE = 5      # Kernel-Größe für Dilation/Erosion
+MORPH_DILATE_ITER = 4      # Anzahl Iterationen für Dilation
+
+# -- LENKUNG: ZWEI LINIEN --
+BASE_SERVO = 90
+GAIN_TWO_LINES = 0.11     # offset * GAIN => +/- servo
+MIN_SERVO = 60
+MAX_SERVO = 120
+
+# -- LENKUNG: EINE LINIE --
+GAIN_ONE_LINE = 0.10
+ASPIRED_OFFSET_SINGLE_LINE = 250  # z.B. 250px Abstand vom Bildzentrum
+
+# -- GESCHWINDIGKEIT / THROTTLE --
+THROTTLE_TWO_LINES = 0.14
+THROTTLE_ONE_LINE = 0.15
+THROTTLE_NO_LINES = 0.14
+
+######################################
+# ENDE TUNING-PARAMETER
+######################################
+
+
+
+def compute_distance_map(frame, lower_hsv, upper_hsv):
     """
-    Hier kannst du deine Befehle an den RCClient schicken,
-    während im Hauptthread das Video gezeigt wird.
+    Erzeugt eine Graustufen-Map, bei der der Wert angibt,
+    wie 'weit' jeder Pixel vom HSV-Bereich [lower_hsv, upper_hsv] entfernt ist.
+
+    - frame: BGR-Bild (z. B. vom Kamerastream)
+    - lower_hsv, upper_hsv: Tupel (H, S, V) in OpenCV-Skala
     """
-    client = RCClient(host=config.PI_HOST, port=config.PI_CONTROL_PORT)
-    time.sleep(1)
-    client.send_command("servo:120")
-    time.sleep(1)
-    client.send_command("servo:60")
-    time.sleep(1)
-    client.send_command("servo:90")
-    time.sleep(1)
-    client.send_throttle_command(0.15)
-    time.sleep(2)
-    client.send_throttle_command(0)
-    print("Steuer-Thread beendet.")
+    # 1) BGR -> HSV
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+
+    Lh, Ls, Lv = lower_hsv
+    Uh, Us, Uv = upper_hsv
+
+    # 2) Hilfsfunktion: Abstand eines Kanals vom [L, U]-Intervall
+    def channel_dist(channel, L, U):
+        below = (channel < L)
+        above = (channel > U)
+        # Im Bereich [L, U] => Distanz = 0
+        # Darunter => (L - channel), darüber => (channel - U)
+        d = np.zeros_like(channel, dtype=np.float32)
+        d[below] = (L - channel[below])
+        d[above] = (channel[above] - U)
+        return d
+
+    dH = channel_dist(H, Lh, Uh)  # Distanz in Hue
+    dS = channel_dist(S, Ls, Us)  # Distanz in S
+    dV = channel_dist(V, Lv, Uv)  # Distanz in V
+
+    # 3) Gesamtdistanz
+    total_dist = dH + dS + dV
+
+    # 4) Normierung auf 0..255
+    #    Grobe Schätzung des "max. möglichen" Abstands
+    maxDist = (Uh - Lh) + (Us - Ls) + (Uv - Lv)
+    if maxDist < 1:
+        maxDist = 1  # Vermeidung Division durch 0
+    scale_factor = 255.0 / float(maxDist)
+    
+    dist_map_8u = np.clip(total_dist * scale_factor, 0, 255).astype(np.uint8)
+
+    return dist_map_8u
 
 def find_two_largest_contours(mask):
     """ Hilfsfunktion, um die zwei größten Konturen zurückzugeben. """
@@ -41,41 +104,28 @@ def find_two_largest_contours(mask):
         return contours_sorted[:2]
 
 def detect_lines(frame):
-    """
-    Versucht zwei orange Linien zu erkennen.
-    Gibt die X-Koordinaten der Mittelpunkte dieser Linien zurück.
-    """
-    
-    lower_orange = (0, 10, 220) # Helligkeit, Sättigung, Farbton
-    upper_orange = (40, 55, 255)
-    
-    lower_white = (0, 0, 220)      # Helligkeit, Sättigung, Farbton
-    upper_white = (255, 50, 255) 
-    
-    contour_threshold = 2500 # Mindestgröße einer Kontur in Pixeln
     
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
     # Maske erzeugen
-    mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
-    mask_white  = cv2.inRange(hsv, lower_white,  upper_white)
-
-    #mask_combined = cv2.bitwise_or(mask_orange, mask_white)
-    mask_combined = mask_orange
+    mask = cv2.inRange(hsv, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
+    mask_second = cv2.inRange(hsv, HSV_LOWER_ORANGE_HUE, HSV_LOWER_ORANGE_HUE)
+    
+    mask = cv2.bitwise_or(mask, mask_second)
 
     # Erosion, Dilation zur Rauschunterdrückung
     kernel = np.ones((5, 5), np.uint8)
-    #mask_combined = cv2.erode(mask_combined, kernel, iterations=1)
-    mask_combined = cv2.dilate(mask_combined, kernel, iterations=4)
+    #mask = cv2.erode(mask_combined, kernel, iterations=1)
+    mask = cv2.dilate(mask, kernel, iterations=4)
 
     # Zwei größte Konturen suchen
-    contours = find_two_largest_contours(mask_combined)
+    contours = find_two_largest_contours(mask)
     cx_list = []
     
 
     for c in contours:
         area = cv2.contourArea(c)
-        if area > contour_threshold:  
+        if area > CONTOUR_THRESHOLD:  
             M = cv2.moments(c)
             if M["m00"] != 0:
                 cx = int(M["m10"] / M["m00"])
@@ -84,13 +134,10 @@ def detect_lines(frame):
                 # Zur Visualisierung: Mittelpunkt zeichnen
                 cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
 
-    return cx_list, mask_combined
+    return cx_list, mask
 
 
 def main():
-    # 1) Steuer-Thread starten
-    #control_thread = threading.Thread(target=motor_test)
-    #control_thread.start()
     client = RCClient(host=config.PI_HOST, port=config.PI_CONTROL_PORT)
 
     # 2) Haupt-Thread: Livestream anzeigen
@@ -113,10 +160,17 @@ def main():
             
             frame_blur = cv2.GaussianBlur(frame, (5, 5), 0)
             
+            #
+            dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
+            
             # Orange Konturen suchen
             cx_list, mask = detect_lines(frame_blur)
-            
-
+            """
+            time.sleep(1)
+            client.send_command("servo:120")
+            time.sleep(1)
+            client.send_command("servo:60")
+            """
             # Wenn wir mindestens zwei Linien haben
             if len(cx_list) >= 2:
                 
@@ -145,13 +199,11 @@ def main():
                 print(f"Servo: {new_servo}")
                 
                 # Gas geben
-                client.send_throttle_command(0.15)
+                client.send_throttle_command(0.12)
             
 
             elif len(cx_list) == 1:
                 # Nur eine Linie gefunden
-                aspired_offset = 200
-                
                 single_x = cx_list[0]
 
                 width = frame.shape[1]
@@ -159,30 +211,33 @@ def main():
 
                 if single_x < center:
                     # linie links
-                    desired_x = center - aspired_offset
+                    desired_x = center - ASPIRED_OFFSET_SINGLE_LINE
                 else:
                     # linie rechts 
-                    desired_x = center + aspired_offset
+                    desired_x = center + ASPIRED_OFFSET_SINGLE_LINE
 
                 offset = single_x - desired_x
 
-                base_servo = 90
-                gain = 0.15
-                new_servo = int(base_servo - gain * offset)
+                new_servo = int(BASE_SERVO - GAIN_ONE_LINE * offset)
                 new_servo = max(60, min(120, new_servo))
 
                 client.send_command(f"servo:{new_servo}")
                 print(f"Servo: {new_servo}")
 
-                # langsamer werden
-                client.send_throttle_command(0.1)
+                client.send_throttle_command(THROTTLE_ONE_LINE)
                 #print("Nur eine Linie gefunden. Lenke nach.")
 
             else:
-                client.send_throttle_command(0.0)
+                client.send_throttle_command(THROTTLE_NO_LINES)
                 print("Keine Linien erkannt. Anhalten!")
 
-            # Anzeigen
+
+            #dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
+            #colored_dist = cv2.applyColorMap(dist_map, cv2.COLORMAP_JET)
+            
+            #cv2.imshow("Distance (grayscale)", dist_map)
+            #cv2.imshow("Distance Heatmap", colored_dist)
+            
             #cv2.imshow("RC Car Livestream", frame)
             cv2.imshow("blurred frame", frame_blur)
             cv2.imshow("Mask with Blur", mask)
@@ -197,9 +252,6 @@ def main():
         # Motor aus!
         client.send_throttle_command(0)
         print("Programm beendet.")
-
-    # 3) Warten, bis der Steuer-Thread fertig ist (optional)
-    #control_thread.join()
 
 if __name__ == "__main__":
     main()

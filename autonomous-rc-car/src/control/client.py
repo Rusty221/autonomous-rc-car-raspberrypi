@@ -11,7 +11,7 @@ class RCClient:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
                 client_socket.connect((self.host, self.port))
                 client_socket.send(command.encode())
-                #print(f"Befehl gesendet: {command}")
+                print(f"Befehl gesendet: {command}")
         except ConnectionError as e:
             print(f"Fehler beim Verbinden: {e}")
 
