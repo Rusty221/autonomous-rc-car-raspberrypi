@@ -24,7 +24,7 @@ MORPH_DILATE_ITER = 4      # Anzahl Iterationen für Dilation
 
 # -- LENKUNG: ZWEI LINIEN --
 BASE_SERVO = 90
-GAIN_TWO_LINES = 0.11     # offset * GAIN => +/- servo
+GAIN_TWO_LINES = 0.10     # offset * GAIN => +/- servo
 MIN_SERVO = 60
 MAX_SERVO = 120
 
@@ -33,9 +33,9 @@ GAIN_ONE_LINE = 0.10
 ASPIRED_OFFSET_SINGLE_LINE = 250  # z.B. 250px Abstand vom Bildzentrum
 
 # -- GESCHWINDIGKEIT / THROTTLE --
-THROTTLE_TWO_LINES = 0.14
-THROTTLE_ONE_LINE = 0.15
-THROTTLE_NO_LINES = 0.14
+THROTTLE_TWO_LINES = 0.13
+THROTTLE_ONE_LINE = 0.13
+THROTTLE_NO_LINES = 0.13
 
 ######################################
 # ENDE TUNING-PARAMETER
@@ -165,12 +165,10 @@ def main():
             
             # Orange Konturen suchen
             cx_list, mask = detect_lines(frame_blur)
-            """
-            time.sleep(1)
-            client.send_command("servo:120")
-            time.sleep(1)
-            client.send_command("servo:60")
-            """
+            
+            client.send_command("servo:90")
+            client.send_throttle_command(0.25)
+            
             # Wenn wir mindestens zwei Linien haben
             if len(cx_list) >= 2:
                 
@@ -199,7 +197,7 @@ def main():
                 print(f"Servo: {new_servo}")
                 
                 # Gas geben
-                client.send_throttle_command(0.12)
+                client.send_throttle_command(THROTTLE_TWO_LINES)
             
 
             elif len(cx_list) == 1:
@@ -222,7 +220,7 @@ def main():
                 new_servo = max(60, min(120, new_servo))
 
                 client.send_command(f"servo:{new_servo}")
-                print(f"Servo: {new_servo}")
+                #print(f"Servo: {new_servo}")
 
                 client.send_throttle_command(THROTTLE_ONE_LINE)
                 #print("Nur eine Linie gefunden. Lenke nach.")
@@ -230,7 +228,7 @@ def main():
             else:
                 client.send_throttle_command(THROTTLE_NO_LINES)
                 print("Keine Linien erkannt. Anhalten!")
-
+            
 
             #dist_map = compute_distance_map(frame_blur, HSV_LOWER_ORANGE, HSV_UPPER_ORANGE)
             #colored_dist = cv2.applyColorMap(dist_map, cv2.COLORMAP_JET)
